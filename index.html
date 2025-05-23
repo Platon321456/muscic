@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Друзья и Музыка</title>
+    <title>Друзья</title>
     <script src="https://cdn.tailwindcss.com/3.4.16"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -108,6 +108,10 @@
         .friends-button:hover::after {
             opacity: 0.3;
         }
+        .friends-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.8);
+        }
         .friends-list {
             background-color: #1A1A1A;
             border: 1px solid #4d0099;
@@ -170,6 +174,11 @@
         .friend-item:last-child {
             border-bottom: none;
         }
+        .friend-item:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(77, 0, 153, 0.3);
+            background-color: rgba(77, 0, 153, 0.1);
+        }
         .avatar {
             width: 40px;
             height: 40px;
@@ -219,9 +228,6 @@
         .telegram-icon:hover {
             opacity: 1;
             transform: translateX(2px);
-        }
-        .friend-item:hover {
-            background-color: rgba(77, 0, 153, 0.1);
         }
         .friend-item:hover .avatar {
             transform: scale(1.1);
@@ -775,6 +781,40 @@
             display: none;
         }
         
+        /* Notification styles */
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(26, 26, 26, 0.9);
+            border: 1px solid #4d0099;
+            border-radius: 8px;
+            padding: 12px 20px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1001;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .notification.error {
+            border-color: #ff3333;
+        }
+        
+        .notification.success {
+            border-color: #33ff33;
+        }
+        
+        .notification.show {
+            opacity: 1;
+        }
+        
         @keyframes loading {
             0% { background-position: 200% 0; }
             100% { background-position: -200% 0; }
@@ -919,10 +959,122 @@
         </div>
     </div>
 
+    <div class="notification" id="notification">
+        <i class="ri-information-line"></i>
+        <span id="notificationMessage">Сообщение</span>
+    </div>
+
     <audio id="audioPlayer"></audio>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Notification system
+            const notification = document.getElementById('notification');
+            const notificationMessage = document.getElementById('notificationMessage');
+            
+            function showNotification(message, type = 'info', duration = 3000) {
+                notification.className = 'notification';
+                notification.classList.add(type);
+                notificationMessage.textContent = message;
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, duration);
+            }
+            
+            // Initialize IndexedDB for storing audio files
+            let db;
+            const DB_NAME = 'MusicPlayerDB';
+            const DB_VERSION = 1;
+            const STORE_NAME = 'tracks';
+            
+            function initDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    
+                    request.onerror = function(event) {
+                        console.error('Error opening IndexedDB:', event.target.error);
+                        reject(event.target.error);
+                    };
+                    
+                    request.onsuccess = function(event) {
+                        db = event.target.result;
+                        resolve(db);
+                    };
+                    
+                    request.onupgradeneeded = function(event) {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                        }
+                    };
+                });
+            }
+            
+            // Save track to IndexedDB
+            async function saveTrackToDB(track) {
+                if (!db) await initDB();
+                
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    const request = store.put(track);
+                    
+                    request.onsuccess = function() {
+                        resolve(track);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('Error saving track to IndexedDB:', event.target.error);
+                        reject(event.target.error);
+                    };
+                });
+            }
+            
+            // Get track from IndexedDB
+            async function getTrackFromDB(trackId) {
+                if (!db) await initDB();
+                
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    const request = store.get(trackId);
+                    
+                    request.onsuccess = function() {
+                        resolve(request.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('Error getting track from IndexedDB:', event.target.error);
+                        reject(event.target.error);
+                    };
+                });
+            }
+            
+            // Delete track from IndexedDB
+            async function deleteTrackFromDB(trackId) {
+                if (!db) await initDB();
+                
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    const request = store.delete(trackId);
+                    
+                    request.onsuccess = function() {
+                        resolve(true);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('Error deleting track from IndexedDB:', event.target.error);
+                        reject(event.target.error);
+                    };
+                });
+            }
+            
             // Friends list functionality
             const friendsButton = document.getElementById('friendsButton');
             const friendsList = document.getElementById('friendsList');
@@ -1030,29 +1182,6 @@
                 }
             });
             
-            friendsButton.addEventListener('mouseenter', function() {
-                this.style.transform = 'translateY(-2px) scale(1.02)';
-                this.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.8)';
-            });
-            
-            friendsButton.addEventListener('mouseleave', function() {
-                this.style.transform = 'translateY(0) scale(1)';
-                this.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.7)';
-            });
-            
-            const friendItems = document.querySelectorAll('.friend-item');
-            friendItems.forEach(item => {
-                item.addEventListener('mouseenter', function() {
-                    this.style.transform = 'scale(1.02)';
-                    this.style.boxShadow = '0 4px 12px rgba(77, 0, 153, 0.3)';
-                });
-                
-                item.addEventListener('mouseleave', function() {
-                    this.style.transform = 'scale(1)';
-                    this.style.boxShadow = 'none';
-                });
-            });
-
             friendsList.addEventListener('wheel', function(e) {
                 e.stopPropagation();
             });
@@ -1104,6 +1233,12 @@
             let currentTrackIndex = -1;
             let newTrackBeingEdited = null;
 
+            // Initialize IndexedDB
+            initDB().catch(error => {
+                console.error('Failed to initialize IndexedDB:', error);
+                showNotification('Ошибка инициализации базы данных', 'error');
+            });
+
             // Generate unique ID for tracks
             function generateId() {
                 return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -1113,7 +1248,7 @@
                 });
             }
 
-            // Save track data to localStorage
+            // Save track data to localStorage and IndexedDB
             async function saveTrackToStorage(track) {
                 try {
                     // Generate unique ID if not exists
@@ -1121,30 +1256,73 @@
                         track.id = generateId();
                     }
                     
-                    // Save to localStorage
+                    // Clone track to avoid modifying the original
+                    const trackToSave = JSON.parse(JSON.stringify(track));
+                    
+                    // Save audio file to IndexedDB if it's a File object
+                    if (trackToSave.audioFile instanceof File) {
+                        const audioDataUrl = await readFileAsDataURL(trackToSave.audioFile);
+                        trackToSave.audio = audioDataUrl;
+                        delete trackToSave.audioFile;
+                    }
+                    
+                    // Save to localStorage (metadata only)
                     const tracks = JSON.parse(localStorage.getItem('musicPlayerTracks') || '[]');
                     
                     // Check if track already exists
-                    const existingIndex = tracks.findIndex(t => t.id === track.id);
+                    const existingIndex = tracks.findIndex(t => t.id === trackToSave.id);
                     if (existingIndex !== -1) {
-                        tracks[existingIndex] = track;
+                        tracks[existingIndex] = trackToSave;
                     } else {
-                        tracks.push(track);
+                        tracks.push(trackToSave);
                     }
                     
                     localStorage.setItem('musicPlayerTracks', JSON.stringify(tracks));
-                    return track;
+                    
+                    // Save full track to IndexedDB
+                    await saveTrackToDB(trackToSave);
+                    
+                    return trackToSave;
                 } catch (error) {
                     console.error('Error saving track:', error);
+                    showNotification('Ошибка при сохранении трека', 'error');
                     return null;
                 }
             }
 
-            // Load tracks from localStorage
+            // Helper function to read file as Data URL
+            function readFileAsDataURL(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // Load tracks from localStorage and IndexedDB
             async function loadTracksFromStorage() {
                 try {
                     const tracks = JSON.parse(localStorage.getItem('musicPlayerTracks') || '[]');
-                    return tracks;
+                    
+                    // For each track, try to load audio from IndexedDB
+                    const loadedTracks = [];
+                    for (const track of tracks) {
+                        try {
+                            const dbTrack = await getTrackFromDB(track.id);
+                            if (dbTrack) {
+                                loadedTracks.push(dbTrack);
+                            } else {
+                                // If not in IndexedDB, keep the track but it won't have audio
+                                loadedTracks.push(track);
+                            }
+                        } catch (error) {
+                            console.error('Error loading track from IndexedDB:', error);
+                            loadedTracks.push(track);
+                        }
+                    }
+                    
+                    return loadedTracks;
                 } catch (error) {
                     console.error('Error loading tracks:', error);
                     return [];
@@ -1154,9 +1332,14 @@
             // Remove track from storage
             async function removeTrackFromStorage(trackId) {
                 try {
+                    // Remove from localStorage
                     const tracks = JSON.parse(localStorage.getItem('musicPlayerTracks') || '[]');
                     const updatedTracks = tracks.filter(t => t.id !== trackId);
                     localStorage.setItem('musicPlayerTracks', JSON.stringify(updatedTracks));
+                    
+                    // Remove from IndexedDB
+                    await deleteTrackFromDB(trackId);
+                    
                     return true;
                 } catch (error) {
                     console.error('Error removing track:', error);
@@ -1201,6 +1384,13 @@
                             if (lastTrackIndex !== null && playlist[lastTrackIndex]) {
                                 currentTrackIndex = parseInt(lastTrackIndex);
                                 currentTrack = {...playlist[currentTrackIndex]};
+                                
+                                // Create blob URL for audio if it's a data URL
+                                if (currentTrack.audio && currentTrack.audio.startsWith('data:audio')) {
+                                    const audioBlob = dataURItoBlob(currentTrack.audio);
+                                    currentTrack.audio = URL.createObjectURL(audioBlob);
+                                }
+                                
                                 audioPlayer.src = currentTrack.audio;
                                 updatePlayerInfo();
                                 
@@ -1234,7 +1424,11 @@
             }
 
             // Initialize with saved playlist
-            loadPlaylistFromStorage();
+            loadPlaylistFromStorage().then(() => {
+                console.log('Playlist loaded successfully');
+            }).catch(error => {
+                console.error('Error loading playlist:', error);
+            });
 
             // Save playback position periodically
             setInterval(savePlaybackPosition, 1000);
@@ -1279,25 +1473,23 @@
                 input.onchange = async (e) => {
                     const file = e.target.files[0];
                     if (file) {
-                        // Read the file as data URL
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            const audioDataUrl = e.target.result;
-                            
+                        try {
                             // Create a new track object
                             newTrackBeingEdited = {
                                 id: generateId(),
                                 name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
                                 artist: 'Неизвестный исполнитель',
                                 cover: null,
-                                audio: audioDataUrl,
+                                audio: null,
                                 audioFile: file
                             };
                             
                             // Open editor with the new track
                             openEditor(newTrackBeingEdited, true);
-                        };
-                        reader.readAsDataURL(file);
+                        } catch (error) {
+                            console.error('Error adding new track:', error);
+                            showNotification('Ошибка при добавлении трека', 'error');
+                        }
                     }
                 };
                 input.click();
@@ -1340,56 +1532,63 @@
             });
 
             editorSaveBtn.addEventListener('click', async () => {
-                // Get values from form
-                const name = editorTrackName.value.trim() || 'Название трека';
-                const artist = editorTrackArtist.value.trim() || 'Исполнитель';
-                
-                // Update track
-                const updatedTrack = {
-                    ...(newTrackBeingEdited || currentTrack),
-                    name,
-                    artist
-                };
-                
-                // Save track to storage
-                const savedTrack = await saveTrackToStorage(updatedTrack);
-                if (!savedTrack) {
-                    alert('Ошибка при сохранении трека');
-                    return;
-                }
-                
-                if (newTrackBeingEdited) {
-                    // Add new track to playlist
-                    playlist.push(savedTrack);
-                    currentTrackIndex = playlist.length - 1;
-                    currentTrack = {...savedTrack};
+                try {
+                    // Get values from form
+                    const name = editorTrackName.value.trim() || 'Название трека';
+                    const artist = editorTrackArtist.value.trim() || 'Исполнитель';
                     
-                    // Create blob URL for audio
-                    if (currentTrack.audio) {
-                        const audioBlob = dataURItoBlob(currentTrack.audio);
-                        currentTrack.audio = URL.createObjectURL(audioBlob);
+                    // Update track
+                    const updatedTrack = {
+                        ...(newTrackBeingEdited || currentTrack),
+                        name,
+                        artist
+                    };
+                    
+                    // Save track to storage
+                    const savedTrack = await saveTrackToStorage(updatedTrack);
+                    if (!savedTrack) {
+                        showNotification('Ошибка при сохранении трека', 'error');
+                        return;
                     }
                     
-                    audioPlayer.src = currentTrack.audio;
-                    
-                    // Play the new track
-                    playTrack();
-                } else {
-                    // Update existing track
-                    currentTrack = savedTrack;
-                    if (currentTrackIndex !== -1) {
-                        playlist[currentTrackIndex] = {...savedTrack};
+                    if (newTrackBeingEdited) {
+                        // Add new track to playlist
+                        playlist.push(savedTrack);
+                        currentTrackIndex = playlist.length - 1;
+                        currentTrack = {...savedTrack};
+                        
+                        // Create blob URL for audio if it's a data URL
+                        if (currentTrack.audio && currentTrack.audio.startsWith('data:audio')) {
+                            const audioBlob = dataURItoBlob(currentTrack.audio);
+                            currentTrack.audio = URL.createObjectURL(audioBlob);
+                        }
+                        
+                        audioPlayer.src = currentTrack.audio;
+                        
+                        // Play the new track
+                        playTrack();
+                    } else {
+                        // Update existing track
+                        currentTrack = savedTrack;
+                        if (currentTrackIndex !== -1) {
+                            playlist[currentTrackIndex] = {...savedTrack};
+                        }
                     }
+                    
+                    // Update UI and save
+                    updatePlayerInfo();
+                    updatePlaylist();
+                    await savePlaylistToStorage();
+                    
+                    showNotification('Трек успешно сохранён', 'success');
+                    
+                    // Close editor
+                    editorModal.classList.remove('active');
+                    newTrackBeingEdited = null;
+                } catch (error) {
+                    console.error('Error saving track:', error);
+                    showNotification('Ошибка при сохранении трека', 'error');
                 }
-                
-                // Update UI and save
-                updatePlayerInfo();
-                updatePlaylist();
-                await savePlaylistToStorage();
-                
-                // Close editor
-                editorModal.classList.remove('active');
-                newTrackBeingEdited = null;
             });
 
             editorCoverInput.addEventListener('change', function(e) {
@@ -1463,28 +1662,35 @@
                         const index = e.currentTarget.dataset.index;
                         const trackId = playlist[index].id;
                         
-                        // Remove from playlist
-                        playlist.splice(index, 1);
-                        
-                        // Remove from storage
-                        await removeTrackFromStorage(trackId);
-                        
-                        if (currentTrackIndex === index) {
-                            currentTrack = {
-                                name: 'Название трека',
-                                artist: 'Исполнитель',
-                                cover: null,
-                                audio: null
-                            };
-                            audioPlayer.src = '';
-                            updatePlayerInfo();
-                            pauseTrack();
-                        } else if (currentTrackIndex > index) {
-                            currentTrackIndex--;
+                        try {
+                            // Remove from playlist
+                            playlist.splice(index, 1);
+                            
+                            // Remove from storage
+                            await removeTrackFromStorage(trackId);
+                            
+                            if (currentTrackIndex === index) {
+                                currentTrack = {
+                                    name: 'Название трека',
+                                    artist: 'Исполнитель',
+                                    cover: null,
+                                    audio: null
+                                };
+                                audioPlayer.src = '';
+                                updatePlayerInfo();
+                                pauseTrack();
+                            } else if (currentTrackIndex > index) {
+                                currentTrackIndex--;
+                            }
+                            
+                            updatePlaylist();
+                            await savePlaylistToStorage();
+                            
+                            showNotification('Трек удалён', 'success');
+                        } catch (error) {
+                            console.error('Error removing track:', error);
+                            showNotification('Ошибка при удалении трека', 'error');
                         }
-                        
-                        updatePlaylist();
-                        await savePlaylistToStorage();
                     });
                 });
                 
@@ -1545,23 +1751,28 @@
             }
             
             async function playTrackFromPlaylist(index) {
-                if (index >= 0 && index < playlist.length) {
-                    const track = playlist[index];
-                    currentTrack = {...track};
-                    currentTrackIndex = index;
-                    
-                    // Create blob URL if needed
-                    if (currentTrack.audio && currentTrack.audio.startsWith('data:audio')) {
-                        const audioBlob = dataURItoBlob(currentTrack.audio);
-                        currentTrack.audio = URL.createObjectURL(audioBlob);
+                try {
+                    if (index >= 0 && index < playlist.length) {
+                        const track = playlist[index];
+                        currentTrack = {...track};
+                        currentTrackIndex = index;
+                        
+                        // Create blob URL if needed
+                        if (currentTrack.audio && currentTrack.audio.startsWith('data:audio')) {
+                            const audioBlob = dataURItoBlob(currentTrack.audio);
+                            currentTrack.audio = URL.createObjectURL(audioBlob);
+                        }
+                        
+                        audioPlayer.src = currentTrack.audio;
+                        
+                        updatePlayerInfo();
+                        playTrack();
+                        playlistModal.classList.remove('active');
+                        await savePlaylistToStorage();
                     }
-                    
-                    audioPlayer.src = currentTrack.audio;
-                    
-                    updatePlayerInfo();
-                    playTrack();
-                    playlistModal.classList.remove('active');
-                    await savePlaylistToStorage();
+                } catch (error) {
+                    console.error('Error playing track:', error);
+                    showNotification('Ошибка при воспроизведении трека', 'error');
                 }
             }
 
@@ -1602,6 +1813,7 @@
                         })
                         .catch(error => {
                             console.error('Error playing audio:', error);
+                            showNotification('Ошибка воспроизведения', 'error');
                         });
                 }
             }
